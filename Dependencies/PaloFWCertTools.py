@@ -1,16 +1,10 @@
-from secrets import choice
-from typing_extensions import Self
 import paramiko
 import time
-import getpass
 import requests
-import getpass
 import pandas as pd
 import re
 import os
 import ssl
-import xmltodict
-from pyfiglet import Figlet
 
 ssl._create_default_https_context = ssl._create_unverified_context
 requests.packages.urllib3.disable_warnings()
@@ -20,8 +14,7 @@ path = os.path.join(os.getcwd(), os.path.dirname(__file__))
 class CLI_Tools:
     def __init__(self, Username, Password):
         self.username = Username
-        self.Password = Password
-
+        self.password = Password
 
     def CheckForPrompt(prompt,StdOut):
         if prompt in StdOut:
@@ -29,12 +22,12 @@ class CLI_Tools:
         else:
             return False
 
-    def GenerateCSR(FWName,username,password):
+    def GenerateCSR(self,FWName):
         CSRCommand="request certificate generate signed-by external filename "+FWName+" certificate-name "+FWName+" name "+FWName+".sherwin.com algorithm RSA rsa-nbits 2048"
         client = paramiko.SSHClient()
         client.load_system_host_keys()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy)
-        client.connect(hostname=FWName+".sherwin.com", username=username, password=password, timeout = 50)
+        client.connect(hostname=FWName+".sherwin.com", username=self.username, password=self.password, timeout = 50)
         x = client.invoke_shell()
         Ready = CLI_Tools.CheckForPrompt("admin@",x.recv(65535).decode('UTF-8'))
         while Ready != True:
@@ -51,14 +44,13 @@ class CLI_Tools:
             if Ready:
                 print("CSR Generated for "+FWName)
                 print("Commit in Progress")
-                Commit(FWName)
+                API_Tools.Commit(self,FWName)
 
-    def ExportCSR(FWName,username,password):
-        #SRCommand="request certificate generate signed-by external filename "+FWName+" certificate-name "+FWName+" name "+FWName+".sherwin.com algorithm RSA rsa-nbits 2048"
+    def ExportCSR(self,FWName):
         client = paramiko.SSHClient()
         client.load_system_host_keys()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy)
-        client.connect(hostname=FWName+".sherwin.com", username=username, password=password, timeout = 50)
+        client.connect(hostname=FWName+".sherwin.com", username=self.username, password=self.password, timeout = 50)
         x = client.invoke_shell()
         Ready = CLI_Tools.CheckForPrompt("admin@",x.recv(65535).decode('UTF-8'))
         while Ready != True:
@@ -88,15 +80,15 @@ class CLI_Tools:
                 with open(os.path.join(path+"\\"+FWName+".txt"), 'rb') as open_file:
                     content = open_file.read()
                 content = content.replace(WINDOWS_LINE_ENDING, UNIX_LINE_ENDING)
-                with open(os.path.join(path+"\\"+FWName+".txt"), 'wb') as open_file:
+                with open(os.path.join(path+"../GeneratedCSRs/"+FWName+".txt"), 'wb') as open_file:
                     open_file.write(content)
 
-    def AssignAndCommitCert(FWName,username,password):
+    def AssignAndCommitCert(self,FWName):
         print("Assigning new Certificate to SSL profile")
         client = paramiko.SSHClient()
         client.load_system_host_keys()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy)
-        client.connect(hostname=FWName+".sherwin.com", username=username, password=password, timeout = 50)
+        client.connect(hostname=FWName+".sherwin.com", username=self.username, password=self.password, timeout = 50)
         x = client.invoke_shell()
         while "admin@" not in x.recv(65535).decode('UTF-8'):
             time.sleep(5)
@@ -111,11 +103,11 @@ class CLI_Tools:
         time.sleep(5)
         client.close()   
 
-    def GetCertInfo(FWName,username,password):
+    def GetCertInfo(self,FWName,writeToFile):
         client = paramiko.SSHClient()
         client.load_system_host_keys()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy)
-        client.connect(hostname=FWName+".sherwin.com", username=username, password=password, timeout = 50)
+        client.connect(hostname=FWName+".sherwin.com", username=self.username, password=self.password, timeout = 50)
         x = client.invoke_shell()
         Ready = CLI_Tools.CheckForPrompt("admin@",x.recv(65535).decode('UTF-8'))
         while Ready != True:
@@ -143,10 +135,13 @@ class CLI_Tools:
             ValidTo="No Cert"
         data={'Firewall':FWName,'CommonName':CommonName,'ValidFrom':ValidFrom,'ValidTo':ValidTo}
         df=pd.DataFrame(data,index=[0])
-        ExistingData=pd.read_csv(os.path.join(path+"\\ICS_FW_Cert_Info.csv"))
-        NewData=ExistingData.append(df, ignore_index=True)
-        NewData=NewData.drop_duplicates()
-        NewData.to_csv(os.path.join(path+"\\ICS_FW_Cert_Info.csv"),index=False)
+        if writeToFile:
+            ExistingData=pd.read_csv(os.path.join(path+"\\ICS_FW_Cert_Info.csv"))
+            NewData=ExistingData.append(df, ignore_index=True)
+            NewData=NewData.drop_duplicates()
+            NewData.to_csv(os.path.join(path+"\\ICS_FW_Cert_Info.csv"),index=False)
+        else:
+            print(df)
 
 class API_Tools:
     def __init__(self, Username, Password):

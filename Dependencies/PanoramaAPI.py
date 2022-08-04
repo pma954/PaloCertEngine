@@ -21,8 +21,13 @@ class Authentication:
         return str(key)
 
 class PullInformation:
-    def UpdateKnownFWs():
-        PanKey=Authentication.auth("panorama")
+    def __init__(self, Username, Password):
+        self.username = Username
+        self.password = Password
+        self.PanKey=Authentication.auth("panorama",self.username,self.password)
+        
+    def UpdateKnownFWs(self):
+        PanKey=self.PanKey
         response = requests.get('https://panorama.sherwin.com/api/?key='+PanKey+'&type=op&cmd=<show><devices><all></all></devices></show>',verify=False)
         AllDeviceDict=xmltodict.parse(response.content)
         if str(response.status_code)!="200":

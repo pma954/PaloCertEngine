@@ -1,15 +1,16 @@
-from secrets import choice
-import paramiko
 import time
 import getpass
 import requests
 import getpass
 import pandas as pd
-import re
 import os
 import ssl
-import xmltodict
 from pyfiglet import Figlet
+from hashlib import sha256
+from Dependencies.PanoramaAPI import PullInformation
+from Dependencies.PaloFWCertTools import CLI_Tools
+from Dependencies.PaloFWCertTools import API_Tools
+
 
 ssl._create_default_https_context = ssl._create_unverified_context
 requests.packages.urllib3.disable_warnings()
@@ -38,14 +39,13 @@ def showKnownFWs():
     print(AllFirewalls)
         
 
-
 def UpdateinfoForKnownFirewalls():
     KnownFirewallinfo=pd.read_csv(os.path.join(path+"\\ICS_FW_Cert_Info.csv"))
     UnknownCertInfo=KnownFirewallinfo[KnownFirewallinfo['CommonName']=="unknown"]
     UnknownFWs=UnknownCertInfo['Firewall'].to_list()
     for x in UnknownFWs:
         print("Gathering info for "+x)
-        GetCertInfo(x)
+        FWCLI.GetCertInfo(x)
     df=pd.read_csv(os.path.join(path+"\\ICS_FW_Cert_Info.csv"))
     df['CommonName'] = df['CommonName'].str.replace(r'\n', '')
     df['CommonName'] = df['CommonName'].str.replace(r'\r', '')
@@ -54,7 +54,7 @@ def UpdateinfoForKnownFirewalls():
     UnKnown=df[df['CommonName']=="unknown"]
     UnKnown=UnKnown[~UnKnown['Firewall'].isin(KnownList)]
     df=pd.concat([UnKnown,NowKnown], ignore_index=True)
-    df.to_csv(os.path.join(path+"\\ICS_FW_Cert_Info.csv"),index=False)
+    df.to_csv(os.path.join(path+"/Dependencies/ICS_FW_Cert_Info.csv"),index=False)
     print(df)
 
 def DisplayOptions():
@@ -74,6 +74,16 @@ WelcomeBanner = Figlet(font='slant')
 print(WelcomeBanner.renderText('ICS FW'))
 print(WelcomeBanner.renderText('Cert Manager'))
 time.sleep(3)
+username= 'admin'
+hex_dig=""
+while str(hex_dig) != "2815ed4ed09d1e9d9cb177780f7271acdeffba9360525debee90d76f2c0e1381":
+    password = getpass.getpass("\n\nplease enter the Firewall Admin Password: ")
+    hash_object = sha256(password.encode('utf-8'))
+    hex_dig = hash_object.hexdigest()
+
+FWAPI=API_Tools(username,password)
+FWCLI=CLI_Tools(username,password)
+
 Choice=""
 
 while Choice != "exit":
@@ -81,22 +91,28 @@ while Choice != "exit":
     if Choice == "1":
         print("\nGenerate CSR for Firewall\n")
         FWList = input("\nPlease enter desired Firewalls separated by commas (uswmpicsfwa,uswmpicsfwb,etc.)\n\nEnter Here: ")
-        username= 'admin'
-        password =getpass.getpass("please enter the password for 'admin': ")
+        for x in FWList:
+            FWCLI.GenerateCSR(x)
+            FWCLI.ExportCSR(x)
+
     elif Choice == "2":
         print("\nImport Signed Certificates to Firewalls\n")
         FWList = input("\nPlease enter desired Firewalls separated by commas (uswmpicsfwa,uswmpicsfwb,etc.)\n\nEnter Here: ")
-        username= 'admin'
-        password =getpass.getpass("please enter the password for 'admin': ")   
+        for x in FWList:
+            FWAPI.ImportCertificate(x)
+            FWCLI.AssignAndCommitCert(x)
+
     elif Choice == "3":
         print("\nCheck Certificate Status on Firewall(s)\n")
         FWList = input("\nPlease enter desired Firewalls separated by commas (uswmpicsfwa,uswmpicsfwb,etc.)\n\nEnter Here: ")
-        username= 'admin'
-        password =getpass.getpass("please enter the password for 'admin': ")   
+        for x in FWList:
+            FWCLI.GetCertInfo(x,False)
+
     elif Choice == "4":
         print("\nShow Known Firewalls\n")
         showKnownFWs()
         print("\n\n")
+
     elif Choice =="5":
         print("\nUpdate cert info sheet for known firewalls with 'Unknown' Certs \n")
         print("\nThis will take around 2 minutes per firewall...\n")
@@ -104,11 +120,13 @@ while Choice != "exit":
         password =getpass.getpass("please enter the password for 'admin': ") 
         UpdateinfoForKnownFirewalls()
         print("done")
+
     elif Choice =="6":
         print("\nUpdating Known Firewalls...\n")
         username= 'admin'
         password =getpass.getpass("please enter the password for 'admin': ") 
-        UpdateKnownFWs()
+        PanInfo=PullInformation(username,password)
+        PanInfo.UpdateKnownFWs()
     else:
         print("\nThat wasn't a choice. Try Again.\n")
     pause="~"
